@@ -1,15 +1,13 @@
-
 from mock import Mock, patch
+
 from django.test import TestCase
 from django.utils.unittest.runner import TextTestResult
 from django.conf import settings
 
-from colortools.test import (ColorTextTestResult, ColorDjangoTestSuiteRunner,
-                             fixture_list)
+from colortools.test import ColorTextTestResult, ColorDiscoverRunner, fixture_list
+
 
 class ColorTextTestResultTestCase(TestCase):
-
-
     def setUp(self):
         self.result = ColorTextTestResult(Mock(), True, 1)
 
@@ -58,18 +56,18 @@ class ColorTextTestResultTestCase(TestCase):
 
         self.assertEqual(mock_method.call_count, 2)
 
-class ColorDjangoTestSuiteRunnerTestCase(TestCase):
 
+class ColorDiscoverRunnerTestCase(TestCase):
     def test_fixture_list(self):
         settings.TEST_GLOBAL_FIXTURES = ['one']
-        self.assertEqual(ColorDjangoTestSuiteRunner.fixture_list('one'), [])
+        self.assertEqual(ColorDiscoverRunner.fixture_list('one'), [])
         settings.TEST_GLOBAL_FIXTURES = []
 
     def test_fixture_list_no_settings(self):
-        self.assertEqual(ColorDjangoTestSuiteRunner.fixture_list('one'), ['one'])
+        self.assertEqual(ColorDiscoverRunner.fixture_list('one'), ['one'])
+
 
 class FixtureListFunctionTestCase(TestCase):
-
     def test_empty_should_return_empty(self):
         self.assertEqual([], fixture_list([]))
 

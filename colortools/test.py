@@ -2,20 +2,20 @@
 # Copyright 2011 by Neubloc, LLC. All rights reserved.
 # Author: Szymon Rajchman
 #
-
 import time
 
-from django.test import TestCase
 from django.conf import settings
+from django.test import TestCase
+from django.test.runner import DiscoverRunner
 from django.core.management import call_command
 from django.db import connections, transaction
-from django.test.simple import DjangoTestSuiteRunner
 from django.utils.unittest.runner import TextTestResult, TextTestRunner, registerResult
 from django.utils import termcolors
 from django.utils import unittest
 from django.test.testcases import connections_support_transactions, disable_transaction_methods
 from django.db import DEFAULT_DB_ALIAS
 from django.contrib.contenttypes.models import ContentType
+
 
 _COLORS = {
     'FAIL': {'fg': 'red', 'opts': ('bold', 'noreset')},
@@ -25,6 +25,7 @@ _COLORS = {
     'SKIP': {'fg': 'yellow', 'opts': ('bold', 'noreset')},
     'ERROR': {'fg': 'yellow', 'opts': ('bold', 'noreset')},
 }
+
 
 class _ColorDecorator(object):
     """Used to decorate output with ANSI colors"""
@@ -40,7 +41,7 @@ class _ColorDecorator(object):
 
     def __getattr__(self, attr):
         if attr in ('stream', '__getstate__'):
-            raise AttributeError(attr) # pragma: no cover
+            raise AttributeError(attr)  # pragma: no cover
         return getattr(self.stream, attr)
 
     def color(self, code):
@@ -99,6 +100,7 @@ class ColorTextTestResult(TextTestResult):
             self.stream.writeln(self.separator2)
             self.stream.colorClear()
             self.stream.writeln("%s" % err)
+
 
 class ColorTextTestRunner(TextTestRunner):
     """
@@ -171,20 +173,20 @@ class ColorTextTestRunner(TextTestRunner):
         self.stream.colorClear()
         return result
 
+
 def fixture_list(fixtures, global_fixtures=[]):
     if fixtures == global_fixtures:
         return []
     else:
         start = 0
         for x in range(len(global_fixtures)):
-            if (len(fixtures) == start or len(global_fixtures) == start
-                or fixtures[x] != global_fixtures[x]):
+            if len(fixtures) == start or len(global_fixtures) == start or fixtures[x] != global_fixtures[x]:
                 break
             start += 1
         return fixtures[start:]
 
 
-class ColorDjangoTestSuiteRunner(DjangoTestSuiteRunner):
+class ColorDiscoverRunner(DiscoverRunner):
     """
     Support for coloring error output
     """
@@ -227,10 +229,10 @@ class ColorDjangoTestSuiteRunner(DjangoTestSuiteRunner):
                 self.fixtures_sets.append(self.currernt_fixtures + loaddata)
                 for db in connections:
                     call_command('loaddata', *loaddata, **{
-                                                        'verbosity': 0,
-                                                        'commit': True,
-                                                        'database': db
-                                                        })
+                        'verbosity': 0,
+                        'commit': True,
+                        'database': db
+                    })
             self.currernt_fixtures = fixtures
 
             # If the test case has a multi_db=True flag, setup all databases.
@@ -240,12 +242,15 @@ class ColorDjangoTestSuiteRunner(DjangoTestSuiteRunner):
             else:
                 databases = [DEFAULT_DB_ALIAS]
 
+            instance.atomics = {}
+
             for db in databases:
-                transaction.enter_transaction_management(using=db)
-                transaction.managed(True, using=db)
+                instance.atomics[db] = transaction.atomic(using=db)
+                instance.atomics[db].__enter__()
             disable_transaction_methods()
 
-            from django.contrib.sites.models import Site
+            from django.contrib.sites import get_site_model
+            Site = get_site_model()
             Site.objects.clear_cache()
 
         setattr(TestCase, '_fixture_setup', fast_fixture_setup)
@@ -279,8 +284,7 @@ class ColorDjangoTestSuiteRunner(DjangoTestSuiteRunner):
         print("")
         print("Fixture statistics:")
         print("    Number of fixtures loaded for TestCases: %s" % self.fixtures)
-        print("    Number of fixtures prevented from "\
-                "loading for TestCases: %s" % self.fixtures_prevented)
+        print("    Number of fixtures prevented from loading for TestCases: %s" % self.fixtures_prevented)
         print("    Number of database flushes: %s" % self.flushes)
         print("    Fixture sets:")
         for set in self.fixtures_sets:
@@ -289,7 +293,7 @@ class ColorDjangoTestSuiteRunner(DjangoTestSuiteRunner):
 
     def run_suite(self, suite, **kwargs):
         result = ColorTextTestRunner(verbosity=self.verbosity,
-                                       failfast=self.failfast).run(suite)
+                                     failfast=self.failfast).run(suite)
         return result
 
     def build_suite(self, test_labels, extra_tests=None, **kwargs):
@@ -303,7 +307,7 @@ class ColorDjangoTestSuiteRunner(DjangoTestSuiteRunner):
         if not test_labels and TEST_APPS:
             test_labels = TEST_APPS
 
-        return self.wrap_tests(super(ColorDjangoTestSuiteRunner, self).build_suite(test_labels, **kwargs))
+        return self.wrap_tests(super(ColorDiscoverRunner, self).build_suite(test_labels, **kwargs))
 
     def setup_databases(self, **kwargs):
         """
@@ -311,8 +315,7 @@ class ColorDjangoTestSuiteRunner(DjangoTestSuiteRunner):
         from TEST_GLOBAL_FIXTURES setting
         """
 
-        return super(ColorDjangoTestSuiteRunner, self).setup_databases(**kwargs)
-
+        return super(ColorDiscoverRunner, self).setup_databases(**kwargs)
 
     @staticmethod
     def fixture_list(*fixtures):
@@ -320,8 +323,7 @@ class ColorDjangoTestSuiteRunner(DjangoTestSuiteRunner):
         return fixture_list(list(fixtures), TEST_GLOBAL_FIXTURES)
 
 
-
-class ColorProfilerDjangoTestSuiteRunner(ColorDjangoTestSuiteRunner):
+class ColorProfilerDiscoverRunner(ColorDiscoverRunner):
     """
     Support for coloring error output
     """
@@ -337,8 +339,9 @@ class ColorProfilerDjangoTestSuiteRunner(ColorDjangoTestSuiteRunner):
             use_profiler = False
 
         result = []
+
         def _profile_run():
-            result.append(super(ColorProfilerDjangoTestSuiteRunner,
+            result.append(super(ColorProfilerDiscoverRunner,
                                 self).run_suite(suite, **kwargs))
 
         if use_profiler:
@@ -349,7 +352,9 @@ class ColorProfilerDjangoTestSuiteRunner(ColorDjangoTestSuiteRunner):
                 def __init__(self, *args, **kwargs):
                     pstats.Stats.__init__(self, *args, **kwargs)
 
-                    class dummy(object): pass
+                    class dummy(object):
+                        pass
+
                     style = dummy()
                     style.LONGRUN = termcolors.make_style(opts=('bold',), fg='red')
                     style.NAME = termcolors.make_style(opts=('bold',), fg='cyan')
@@ -362,14 +367,14 @@ class ColorProfilerDjangoTestSuiteRunner(ColorDjangoTestSuiteRunner):
                     print >> self.stream, 'filename:lineno(function)'
 
                 def print_line(self, func):  # hack : should print percentages
-                    cc, nc, tt, ct, callers = self.stats[func] #@UnusedVariable
+                    cc, nc, tt, ct, callers = self.stats[func]  # @UnusedVariable
                     c = str(nc)
                     if nc != cc:
                         c = c + '/' + str(cc)
                     print >> self.stream, c.rjust(5),
                     print >> self.stream, pstats.f8(ct),
                     if cc == 0:
-                        print >> self.stream, ' '*8,
+                        print >> self.stream, ' ' * 8,
                     else:
                         percall = float(ct) / cc
                         result = pstats.f8(percall)
@@ -378,7 +383,7 @@ class ColorProfilerDjangoTestSuiteRunner(ColorDjangoTestSuiteRunner):
                         print >> self.stream, result,
                     print >> self.stream, self.func_std_string(func)
 
-                def func_std_string(self, func_name): # match what old profile produced
+                def func_std_string(self, func_name):  # match what old profile produced
                     if func_name[:2] == ('~', 0):
                         # special case for built-in functions
                         name = func_name[2]
@@ -394,7 +399,7 @@ class ColorProfilerDjangoTestSuiteRunner(ColorDjangoTestSuiteRunner):
                              self.style.FILE(file.name), line,
                              self.style.APP(file.parent.parent.name)))
 
-            cProfile.runctx('profile_run()', {'profile_run':_profile_run}, {}, str(profile_file))
+            cProfile.runctx('profile_run()', {'profile_run': _profile_run}, {}, str(profile_file))
 
             results = StringIO.StringIO()
             stats = ColorStats(str(profile_file), stream=results)
