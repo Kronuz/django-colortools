@@ -4,6 +4,13 @@
 #
 import time
 
+try:
+    from pygments import highlight
+    from pygments.lexers import PythonTracebackLexer
+    from pygments.formatters import TerminalFormatter  # or Terminal256Formatter
+except ImportError:
+    highlight = PythonTracebackLexer = TerminalFormatter = lambda s=None, *a, **k: s
+
 from django.conf import settings
 from django.test import TestCase
 from django.test.runner import DiscoverRunner
@@ -58,6 +65,10 @@ class ColorTextTestResult(TextTestResult):
 
     Used by TextTestRunner.
     """
+
+    def _exc_info_to_string(self, err, test):
+        code = super(ColorTextTestResult, self)._exc_info_to_string(err, test)
+        return highlight(code, PythonTracebackLexer(), TerminalFormatter())
 
     def __init__(self, *args, **kwargs):
         super(ColorTextTestResult, self).__init__(*args, **kwargs)
